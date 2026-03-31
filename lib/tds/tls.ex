@@ -97,6 +97,7 @@ defmodule Tds.Tls do
 
   # SERVER
   def init({socket, ssl_opts}) do
+    Logger.debug("[Tds.Tls] init GenServer pid=#{inspect(self())} socket_owner=#{inspect(Port.info(socket, :connected))}")
     {:ok, %__MODULE__{socket: socket, ssl_opts: ssl_opts, handshake?: true}}
   end
 
@@ -106,7 +107,7 @@ defmodule Tds.Tls do
   end
 
   def handle_call({:setopts, options}, _from, %{socket: socket, handshake?: hs} = s) do
-    Logger.debug("[Tds.Tls] setopts(hs=#{hs}) #{inspect(options)}")
+    Logger.debug("[Tds.Tls] setopts(hs=#{hs}) #{inspect(options)} socket_owner=#{inspect(Port.info(socket, :connected))}")
     {:reply, :inet.setopts(socket, options), s}
   end
 
