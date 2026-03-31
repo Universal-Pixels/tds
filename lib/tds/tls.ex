@@ -101,6 +101,7 @@ defmodule Tds.Tls do
   end
 
   def handle_call({:controlling_process, tls_conn_pid}, _from, s) do
+    Logger.debug("[Tds.Tls] controlling_process set to #{inspect(tls_conn_pid)}")
     {:reply, :ok, %{s | owner_pid: tls_conn_pid}}
   end
 
@@ -279,5 +280,11 @@ defmodule Tds.Tls do
       when tag in [:tcp_error, :ssl_error] do
     Kernel.send(pid, msg)
     {:stop, tag, s}
+  end
+
+  # Catch-all for debugging unmatched messages
+  def handle_info(msg, s) do
+    Logger.debug("[Tds.Tls] UNMATCHED handle_info: #{inspect(msg, limit: 50)} state: hs=#{s.handshake?} owner=#{inspect(s.owner_pid)} buf=#{inspect(s.buffer)}")
+    {:noreply, s}
   end
 end
