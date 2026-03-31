@@ -17,7 +17,9 @@ defmodule Tds.Tls do
 
     with {:ok, pid} <- GenServer.start_link(__MODULE__, {socket, ssl_opts}, []),
          :ok <- :gen_tcp.controlling_process(socket, pid) do
+      Logger.debug("[Tds.Tls] starting ssl.connect")
       connection_result = :ssl.connect(socket, ssl_opts, :infinity)
+      Logger.debug("[Tds.Tls] ssl.connect returned: #{inspect(elem(connection_result, 0))}")
 
       # Check if ssl connection was established successfully
       if elem(connection_result, 0) == :ok do
@@ -103,6 +105,7 @@ defmodule Tds.Tls do
   end
 
   def handle_call({:setopts, options}, _from, %{socket: socket, handshake?: hs} = s) do
+    Logger.debug("[Tds.Tls] setopts(hs=#{hs}) #{inspect(options)}")
     tds_header_size = if hs == true, do: 8, else: 0
 
     opts =
@@ -117,6 +120,7 @@ defmodule Tds.Tls do
 
   def handle_call({:send, data}, _from, %{socket: socket, handshake?: true} = s) do
     size = IO.iodata_length(data) + 8
+    Logger.debug("[Tds.Tls] send(handshake) #{IO.iodata_length(data)} bytes")
 
     header = <<0x12, 0x01, size::unsigned-size(2)-unit(8), 0x00, 0x00, 0x00, 0x00>>
 
@@ -133,6 +137,7 @@ defmodule Tds.Tls do
   # The server wraps each SSL handshake record in a TDS packet with an 8-byte header.
   # Without stripping, SSL sees 0x12 (TDS type) instead of 0x16 (SSL handshake).
   def handle_call({:recv, length, timeout}, _from, %{handshake?: true, recv_buffer: buf} = s) do
+    Logger.debug("[Tds.Tls] recv(handshake) length=#{length} buf_size=#{byte_size(buf)}")
     case recv_handshake(s.socket, buf, length, timeout) do
       {:ok, data, rest} ->
         {:reply, {:ok, data}, %{s | recv_buffer: rest}}
@@ -203,6 +208,7 @@ defmodule Tds.Tls do
         {:tcp, port, <<0x12, 0, size::unsigned-16, _::32, tail::binary>>},
         %{socket: socket, owner_pid: pid, buffer: nil, handshake?: true} = s
       ) do
+    Logger.debug("[Tds.Tls] handle_info(tcp, handshake, status=0) size=#{size}")
     expecting = size - 8
 
     case tail do
