@@ -123,11 +123,14 @@ defmodule Tds.Tls do
 
   def handle_call({:send, data}, _from, %{socket: socket, handshake?: true} = s) do
     size = IO.iodata_length(data) + 8
-    Logger.debug("[Tds.Tls] send(handshake) #{IO.iodata_length(data)} bytes")
+    data_bin = IO.iodata_to_binary(data)
+    Logger.debug("[Tds.Tls] send(handshake) #{byte_size(data_bin)} bytes, first_16=#{inspect(:binary.part(data_bin, 0, min(16, byte_size(data_bin))))}")
 
     header = <<0x12, 0x01, size::unsigned-size(2)-unit(8), 0x00, 0x00, 0x00, 0x00>>
 
+    # Also verify the data actually went out
     resp = :gen_tcp.send(socket, [header, data])
+    Logger.debug("[Tds.Tls] send result: #{inspect(resp)}")
     {:reply, resp, s}
   end
 
