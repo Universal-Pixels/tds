@@ -157,8 +157,13 @@ defmodule Tds.Tls do
     {:ok, buf, <<>>}
   end
 
-  # Need to read from socket
+  # Need to read from socket. Must handle both active and passive mode:
+  # SSL may set active:N then call recv - in that case we need to
+  # switch to passive, read, then restore active mode.
   defp recv_handshake(socket, buf, length, timeout) do
+    # Ensure socket is in passive mode for synchronous recv
+    :inet.setopts(socket, active: false)
+
     case :gen_tcp.recv(socket, 0, timeout) do
       {:ok, raw} ->
         new_data = strip_tds_header(raw)
