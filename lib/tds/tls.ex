@@ -106,16 +106,7 @@ defmodule Tds.Tls do
 
   def handle_call({:setopts, options}, _from, %{socket: socket, handshake?: hs} = s) do
     Logger.debug("[Tds.Tls] setopts(hs=#{hs}) #{inspect(options)}")
-    tds_header_size = if hs == true, do: 8, else: 0
-
-    opts =
-      options
-      |> Enum.map(fn
-        {:active, val} when is_number(val) -> {:active, val + tds_header_size}
-        val -> val
-      end)
-
-    {:reply, :inet.setopts(socket, opts), s}
+    {:reply, :inet.setopts(socket, options), s}
   end
 
   def handle_call({:send, data}, _from, %{socket: socket, handshake?: true} = s) do
@@ -263,6 +254,18 @@ defmodule Tds.Tls do
         {:tcp_passive, _port} = msg,
         %{owner_pid: pid, handshake?: false, buffer: nil} = s
       ) do
+    Kernel.send(pid, msg)
+    {:noreply, s}
+  end
+
+  # During handshake, forward tcp_passive to the SSL process so it can
+  # re-enable active mode. Without this, the socket goes passive and
+  # the SSL handshake hangs waiting for data that never arrives.
+  def handle_info(
+        {:tcp_passive, _port} = msg,
+        %{owner_pid: pid, handshake?: true} = s
+      ) do
+    Logger.debug("[Tds.Tls] handle_info(tcp_passive, handshake) - forwarding to SSL")
     Kernel.send(pid, msg)
     {:noreply, s}
   end
