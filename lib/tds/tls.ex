@@ -107,7 +107,17 @@ defmodule Tds.Tls do
   end
 
   def handle_call({:setopts, options}, _from, %{socket: socket, handshake?: hs} = s) do
-    Logger.debug("[Tds.Tls] setopts(hs=#{hs}) #{inspect(options)} socket_owner=#{inspect(Port.info(socket, :connected))}")
+    Logger.debug("[Tds.Tls] setopts(hs=#{hs}) #{inspect(options)} socket_owner=#{inspect(Port.info(socket, :connected))} self=#{inspect(self())}")
+
+    # If setting active mode during handshake, schedule a delayed ownership check
+    if hs do
+      genserver = self()
+      spawn(fn ->
+        Process.sleep(100)
+        Logger.debug("[Tds.Tls] DELAYED CHECK socket_owner=#{inspect(Port.info(socket, :connected))} genserver=#{inspect(genserver)}")
+      end)
+    end
+
     {:reply, :inet.setopts(socket, options), s}
   end
 
