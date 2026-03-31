@@ -9,7 +9,7 @@ defmodule Tds.Tls do
 
   @default_ssl_opts [active: false, cb_info: {Tds.Tls, :tcp, :tcp_closed, :tcp_error}]
 
-  defstruct [:socket, :ssl_opts, :owner_pid, :handshake?, :buffer]
+  defstruct [:socket, :ssl_opts, :owner_pid, :handshake?, :buffer, recv_buffer: <<>>]
 
   def connect(socket, ssl_opts) do
     ssl_opts = ssl_opts ++ @default_ssl_opts
@@ -129,19 +129,70 @@ defmodule Tds.Tls do
     {:reply, resp, s}
   end
 
-  # def handle_call({:recv, length, timeout}, _from, %{socket: socket, handshake?: true} = s) do
-  #   res = case :gen_tcp.recv(socket, length, timeout) do
-  #     {:ok, data}
-  #   end
-  #   {:reply, res, s}
-  # end
+  # During handshake, recv must strip TDS prelogin headers from server responses.
+  # The server wraps each SSL handshake record in a TDS packet with an 8-byte header.
+  # Without stripping, SSL sees 0x12 (TDS type) instead of 0x16 (SSL handshake).
+  def handle_call({:recv, length, timeout}, _from, %{handshake?: true, recv_buffer: buf} = s) do
+    case recv_handshake(s.socket, buf, length, timeout) do
+      {:ok, data, rest} ->
+        {:reply, {:ok, data}, %{s | recv_buffer: rest}}
 
-  def handle_call({:recv, length, timeout}, _from, %{socket: socket} = s) do
+      {:error, _} = error ->
+        {:reply, error, s}
+    end
+  end
+
+  def handle_call({:recv, length, timeout}, _from, %{socket: socket, handshake?: false} = s) do
     res = :gen_tcp.recv(socket, length, timeout)
     {:reply, res, s}
   end
 
-  def handle_cast(:handshake_complete, s), do: {:noreply, %{s | handshake?: false}}
+  # If buffer already has enough data, return from buffer
+  defp recv_handshake(_socket, buf, length, _timeout)
+       when length > 0 and byte_size(buf) >= length do
+    <<data::binary-size(length), rest::binary>> = buf
+    {:ok, data, rest}
+  end
+
+  # If length is 0 and buffer has data, return all buffered data
+  defp recv_handshake(_socket, buf, 0, _timeout) when byte_size(buf) > 0 do
+    {:ok, buf, <<>>}
+  end
+
+  # Need to read from socket
+  defp recv_handshake(socket, buf, length, timeout) do
+    case :gen_tcp.recv(socket, 0, timeout) do
+      {:ok, raw} ->
+        new_data = strip_tds_header(raw)
+        all_data = IO.iodata_to_binary([buf, new_data])
+
+        cond do
+          length == 0 ->
+            {:ok, all_data, <<>>}
+
+          byte_size(all_data) >= length ->
+            <<data::binary-size(length), rest::binary>> = all_data
+            {:ok, data, rest}
+
+          true ->
+            # Not enough data yet, read more
+            recv_handshake(socket, all_data, length, timeout)
+        end
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  # Strip 8-byte TDS prelogin header if present.
+  # Server wraps SSL handshake data in: <<type(1), status(1), size(2), spid(2), packet(1), window(1)>>
+  defp strip_tds_header(<<0x12, _status, _size::unsigned-16, _::32, payload::binary>>) do
+    payload
+  end
+
+  defp strip_tds_header(data), do: data
+
+  def handle_cast(:handshake_complete, s), do: {:noreply, %{s | handshake?: false, recv_buffer: <<>>}}
 
   def handle_info({:tcp, _, _} = msg, %{owner_pid: pid, handshake?: false, buffer: nil} = s) do
     Kernel.send(pid, msg)
