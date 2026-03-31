@@ -216,7 +216,7 @@ defmodule Tds.Tls do
         {:tcp, port, <<0x12, 0, size::unsigned-16, _::32, tail::binary>>},
         %{socket: socket, owner_pid: pid, buffer: nil, handshake?: true} = s
       ) do
-    Logger.debug("[Tds.Tls] handle_info(tcp, handshake, status=0) size=#{size}")
+    IO.puts("[Tds.Tls] handle_info(tcp, handshake, status=0) size=#{size}")
     expecting = size - 8
 
     case tail do
@@ -300,7 +300,7 @@ defmodule Tds.Tls do
 
   # Catch-all for debugging unmatched messages
   def handle_info(msg, s) do
-    Logger.debug("[Tds.Tls] UNMATCHED handle_info: #{inspect(msg, limit: 50)} state: hs=#{s.handshake?} owner=#{inspect(s.owner_pid)} buf=#{inspect(s.buffer)}")
+    IO.puts("[Tds.Tls] UNMATCHED handle_info: #{inspect(msg, limit: 50)} state: hs=#{s.handshake?} owner=#{inspect(s.owner_pid)} buf=#{inspect(s.buffer)}")
     {:noreply, s}
   end
 end
