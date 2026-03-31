@@ -7,7 +7,7 @@ defmodule Tds.Tls do
   import Kernel, except: [send: 2]
   import Tds.BinaryUtils
 
-  @default_ssl_opts [active: false, cb_info: {Tds.Tls, :tcp, :tcp_closed, :tcp_error}]
+  @default_ssl_opts [active: false, cb_info: {Tds.Tls, :tcp, :tcp_closed, :tcp_error, :tcp_passive}]
 
   defstruct [:socket, :ssl_opts, :owner_pid, :handshake?, :buffer, recv_buffer: <<>>]
 
